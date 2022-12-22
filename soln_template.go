@@ -18,7 +18,7 @@ func Part_one(input_file string) int {
     // Read input line by line
     for scanner.Scan() {
         line := scanner.Text()
-
+        // code here
     }
     return 0
 }
@@ -34,6 +34,7 @@ func Part_two(input_file string) int {
     // Read input line by line
     for scanner.Scan() {
         line := scanner.Text()
+        // code here
     }
     return 0
 }
