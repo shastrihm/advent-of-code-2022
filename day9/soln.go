@@ -27,22 +27,54 @@ func sign(t float64) float64 {
     }
     return -1
 }
+
 // Given coords of head, tells tail what its next coordinates should be
 func (tail *Coord) NextStep(head *Coord) {
     xdiff := sign(head.X - tail.X)
     ydiff := sign(head.Y - tail.Y)
     if math.Abs(head.X - tail.X) == 2 {
         tail.X += 1*xdiff
-        if math.Abs(head.Y - tail.Y) == 1 {
+        if math.Abs(head.Y - tail.Y) >= 1 {
             tail.Y += 1*ydiff
         }
     }
     if math.Abs(head.Y - tail.Y) == 2 {
         tail.Y += 1*ydiff
-        if math.Abs(head.X - tail.X) == 1 {
+        if math.Abs(head.X - tail.X) >= 1 {
             tail.X += 1*xdiff
         }
     }
+}
+
+// Visualizes rpoe on n x n grid. Assumes all
+// coordinates are within bounds
+// For debugging
+func Visualize(rope []*Coord, n int) {
+    grid := make([][]string, n)
+    for i := 0; i < n; i++ {
+        grid[i] = make([]string, n)
+        for j := 0; j < n; j++ {
+            grid[i][j] = "."
+        }
+    }
+
+    for pos, seg := range rope {
+        logo := strconv.Itoa(pos)
+        if pos == 0 {
+            logo = "H"
+        }
+        if grid[int(seg.X)][int(seg.Y)] == "." {
+            grid[int(seg.X)][int(seg.Y)] = logo
+        }
+    }
+    // Print
+    for i := 0; i < n; i++ {
+        for j := 0; j < n; j++ {
+            fmt.Print(grid[i][j], "")
+        }
+        fmt.Print("\n")
+    }
+    fmt.Print("\n")
 }
 
 func Part_one(input_file string) int {
