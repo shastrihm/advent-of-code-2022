@@ -15,19 +15,57 @@ type Graph struct {
     adjList [][]string
 }
 
+func copyMap(m map[string]bool) map[string]bool {
+    m2 := make(map[string]bool, len(m))
+    for k, v := range m {
+        m2[k] = v
+    }
+    return m2
+}
 
-func recurseGraphWalk(graph *Graph) int {
+
+func recurseGraphWalk(graph *Graph, startKey string) int {
     var helper func(string, int, map[string]bool, int) int
+
     helper = func(
         currKey string,
         currMin int,
-        visited map[string]bool,
-        totPressure int
+        released map[string]bool,
+        totPressure int,
     ) int {
+        if currMin == 0 {
+            return totPressure
+        }
+        var r int
+        turnedOff := false
+        if _, ok := released[currKey]; !ok {
+            idx := graph.keys[currKey]
+            r = (currMin-1)*graph.rates[idx]
+            turnedOff = true
+        }
 
+        notReleasedNew := copyMap(released)
+        releasedNew := copyMap(released)
+        releasedNew[currKey] = true
+
+        best := 0
+        idx := graph.keys[currKey]
+        for _, n := range graph.adjList[idx] {
+            res := helper(n, currMin-1, notReleasedNew, totPressure)
+            if res > best {
+                best = res
+            }
+            if turnedOff {
+                res = helper(n, currMin-2, releasedNew, totPressure+r)
+                if res > best {
+                    best = res
+                }
+            }
+        }
+        return best
     }
-    visited := map[string]bool{}
 
+    return helper(startKey, 30, map[string]bool{}, 0)
 }
 
 func parseInput(input_file string) *Graph {
@@ -77,8 +115,7 @@ func parseInput(input_file string) *Graph {
 
 func Part_one(input_file string) int {
     G := parseInput(input_file)
-    fmt.Println(G)
-    return 0
+    return recurseGraphWalk(G, "AA")
 }
 
 // func Part_two(input_file string) int {
