@@ -7,65 +7,165 @@ import (
     "os"
     "strings"
     "strconv"
+    "time"
 )
+// optimizations
+// collapse nodes with 0 flow into edges between nodes with nonzero flow
+// done - precompute distance matrix to reduce upper bound in the branch&bound
+//
 
 type Graph struct {
-    keys map[string]int
-    rates []int
-    adjList [][]string
+    Keys []string
+    AdjMatrix [][]int
+    Rates []int
+    Apsp [][]int //all pairs shortest path
 }
 
-func copyMap(m map[string]bool) map[string]bool {
-    m2 := make(map[string]bool, len(m))
+
+// func (g *Graph) collapse(key string) []{
+//     idx := g[key]
+//
+// }
+
+func pos(slice []string, key string) int {
+    for p, v := range slice {
+        if (v == key) {
+            return p
+        }
+    }
+    return -1
+}
+
+func AdjMatrix(keys []string, adjList [][]string) [][]int {
+    matrix := [][]int{}
+    for i, _ := range keys {
+        row := make([]int, len(keys))
+        for _, neighbKey := range adjList[i] {
+            row[pos(keys, neighbKey)] = 1
+        }
+        matrix = append(matrix, row)
+    }
+    return matrix
+}
+
+
+func copy2D(src [][]int) (dst [][]int) {
+	dst = make([][]int, len(src))
+	for k := 0; k < len(src); k++ {
+		dst[k] = make([]int, len(src[k]))
+		copy(dst[k], src[k])
+	}
+	return dst
+}
+
+func AllPairsShortestPaths(matrix [][]int) [][]int {
+    // Impl from https://github.com/bpowers/floyd-warshal/blob/4e6ff1dd0d79d68caff49b5c50db46d6f5dc1d86/floyd-warshal.go
+    // initialize the shortest paths with a copy of the adjacency list
+    prev := copy2D(matrix)
+    curr := copy2D(matrix)
+
+    nVertices := len(matrix)
+    for k := 0; k < nVertices; k++ {
+        // order of i,j iteration makes big difference
+        for i := 0; i < nVertices; i++ {
+            for j := 0; j < nVertices; j++ {
+                a := prev[i][k] + prev[k][j]
+                b := prev[i][j]
+                if a < b {
+                    curr[i][j] = a
+                } else {
+                    curr[i][j] = b
+                }
+            }
+        }
+        prev, curr = curr, prev
+    }
+    return prev
+}
+
+func copyMap(m map[int]int) map[int]int {
+    m2 := make(map[int]int, len(m))
     for k, v := range m {
         m2[k] = v
     }
     return m2
 }
 
-
-func recurseGraphWalk(graph *Graph, startKey string) int {
-    var helper func(string, int, map[string]bool, int) int
-
-    helper = func(
-        currKey string,
-        currMin int,
-        released map[string]bool,
-        totPressure int,
-    ) int {
-        if currMin == 0 {
-            return totPressure
-        }
-        var r int
-        turnedOff := false
-        if _, ok := released[currKey]; !ok {
-            idx := graph.keys[currKey]
-            r = (currMin-1)*graph.rates[idx]
-            turnedOff = true
-        }
-
-        notReleasedNew := copyMap(released)
-        releasedNew := copyMap(released)
-        releasedNew[currKey] = true
-
-        best := 0
-        idx := graph.keys[currKey]
-        for _, n := range graph.adjList[idx] {
-            res := helper(n, currMin-1, notReleasedNew, totPressure)
-            if res > best {
-                best = res
+// upper bound for branch and bound
+func bestSurpassableInRemainingTime(
+    graph *Graph,
+    released map[int]int,
+    currKey int,
+    bestSoFar,
+    currTot,
+    currMin int) bool {
+        sum := currTot
+        for i, _ := range graph.AdjMatrix[currKey] {
+            if _, ok := released[i]; !ok {
+                dist := graph.Apsp[currKey][i]
+                sum += (currMin-1-dist)*graph.Rates[i]
             }
-            if turnedOff {
-                res = helper(n, currMin-2, releasedNew, totPressure+r)
-                if res > best {
-                    best = res
+        }
+        //fmt.Println(sum > bestSoFar, sum, bestSoFar)
+        return sum > bestSoFar
+    }
+
+func recurseGraphWalk(graph *Graph, startKey int) int {
+    var helper func(int, int, map[int]int, int)
+    bestSoFar := 0
+    helper = func(
+        currKey int,
+        currMin int,
+        released map[int]int,
+        totPressure int,
+    ) {
+        if currMin <= 0 {
+            if totPressure > bestSoFar {
+                bestSoFar = totPressure
+            }
+            //fmt.Println(totPressure, bestSoFar)
+            return
+        }
+
+        if !bestSurpassableInRemainingTime(
+            graph,
+            released,
+            currKey,
+            bestSoFar,
+            totPressure,
+            currMin,
+        ) {
+            return
+        }
+
+        var r int
+         _, ok := released[currKey];
+        if !ok {
+            r = (currMin-1)*graph.Rates[currKey]
+        }
+
+        turnedOff := !ok && r > 0
+
+        releasedNew := copyMap(released)
+        if turnedOff {
+            releasedNew[currKey] = currMin
+        }
+
+        for i, n := range graph.AdjMatrix[currKey] {
+            if n > 0 {
+                if !turnedOff {
+                    helper(i, currMin-1, released, totPressure)
+                } else {
+                    helper(i, currMin-2, releasedNew, totPressure+r)
                 }
             }
         }
-        return best
     }
-
-    return helper(startKey, 30, map[string]bool{}, 0)
+    start := time.Now()
+    helper(startKey, 30, map[int]int{}, 0)
+    elapsed := time.Since(start)
+    fmt.Printf("Elapsed time: %s\n", elapsed)
+    return bestSoFar
 }
 
 func parseInput(input_file string) *Graph {
@@ -75,10 +175,11 @@ func parseInput(input_file string) *Graph {
     }
     defer file.Close()
 
-    valveKeys := map[string]int{}
+    valveKeys := []string{}
     valveRates := []int{}
     valveTunnels := [][]string{}
     scanner := bufio.NewScanner(file)
+
     // Read input line by line
     for scanner.Scan() {
         line := scanner.Text()
@@ -101,21 +202,25 @@ func parseInput(input_file string) *Graph {
         valves = strings.Split(valves[1], ", ")
 
 
-        valveKeys[key] = len(valveKeys)
+        valveKeys = append(valveKeys, key)
         valveRates = append(valveRates, rateInt)
         valveTunnels = append(valveTunnels, valves)
     }
-
-    return &Graph{
-        valveKeys,
-        valveRates,
-        valveTunnels,
+    matrix := AdjMatrix(valveKeys, valveTunnels)
+    apsp := AllPairsShortestPaths(matrix)
+    graph := &Graph{
+        Keys: valveKeys,
+        AdjMatrix: matrix,
+        Rates: valveRates,
+        Apsp: apsp,
     }
+    return graph
 }
 
 func Part_one(input_file string) int {
     G := parseInput(input_file)
-    return recurseGraphWalk(G, "AA")
+
+    return recurseGraphWalk(G, pos(G.Keys, "AA"))
 }
 
 // func Part_two(input_file string) int {
@@ -138,4 +243,5 @@ func main() {
     input := os.Args[1]
     fmt.Println(Part_one(input))
     //fmt.Println(Part_two(input))
+
 }
