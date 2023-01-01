@@ -9,10 +9,6 @@ import (
     "strconv"
     "time"
 )
-// optimizations
-// collapse nodes with 0 flow into edges between nodes with nonzero flow
-// done - precompute distance matrix to reduce upper bound in the branch&bound
-//
 
 type Graph struct {
     Keys []string
@@ -21,11 +17,61 @@ type Graph struct {
     Apsp [][]int //all pairs shortest path
 }
 
+// given a node that has rate 0
+func (g *Graph) collapse(nodeIdx int) {
+    if g.Rates[nodeIdx] != 0 {
+        log.Fatal(fmt.Errorf("%s node has nonzero rate"), g.Keys[nodeIdx])
+    }
+    destCostMap := map[int]int{}
+    for dest, cost := range g.AdjMatrix[nodeIdx] {
+        if cost > 0 {
+            destCostMap[dest] = cost
+        }
+    }
 
-// func (g *Graph) collapse(key string) []{
-//     idx := g[key]
-//
-// }
+    for fromNode, row := range g.AdjMatrix {
+        toCost := g.AdjMatrix[fromNode][nodeIdx]
+        if toCost > 0 {
+            for dest, cost := range destCostMap {
+                if row[dest] == 0 {
+                    row[dest] = toCost + cost
+                } else {
+                    row[dest] = Min(toCost + cost, row[dest])
+                }
+            }
+        g.AdjMatrix[fromNode][nodeIdx] = 0
+        }
+    }
+}
+
+func (g *Graph) CollapseAllNodesWithZeroRate() {
+    g.PrintAdjMatrix()
+    for i, f := range g.Rates {
+        if f == 0 {
+            g.collapse(i)
+        }
+    }
+    g.PrintAdjMatrix()
+}
+
+func (g *Graph) PrintAdjMatrix() {
+    for _, row := range g.AdjMatrix {
+        fmt.Println(row)
+    }
+    fmt.Print("\n")
+}
+
+func (g *Graph) SetAPSP(apsp [][]int) {
+    g.Apsp = apsp
+}
+
+func Min(x, y int) int{
+    if x < y {
+        return x
+    }
+    return y
+}
+
 
 func pos(slice []string, key string) int {
     for p, v := range slice {
@@ -100,7 +146,7 @@ func bestSurpassableInRemainingTime(
     currTot,
     currMin int) bool {
         sum := currTot
-        for i, _ := range graph.AdjMatrix[currKey] {
+        for i := 0; i < len(graph.Keys); i++ {
             if _, ok := released[i]; !ok {
                 dist := graph.Apsp[currKey][i]
                 sum += (currMin-1-dist)*graph.Rates[i]
@@ -119,6 +165,7 @@ func recurseGraphWalk(graph *Graph, startKey int) int {
         released map[int]int,
         totPressure int,
     ) {
+
         if currMin <= 0 {
             if totPressure > bestSoFar {
                 bestSoFar = totPressure
@@ -154,9 +201,9 @@ func recurseGraphWalk(graph *Graph, startKey int) int {
         for i, n := range graph.AdjMatrix[currKey] {
             if n > 0 {
                 if !turnedOff {
-                    helper(i, currMin-1, released, totPressure)
+                    helper(i, currMin-n, released, totPressure)
                 } else {
-                    helper(i, currMin-2, releasedNew, totPressure+r)
+                    helper(i, currMin-1-n, releasedNew, totPressure+r)
                 }
             }
         }
@@ -207,13 +254,15 @@ func parseInput(input_file string) *Graph {
         valveTunnels = append(valveTunnels, valves)
     }
     matrix := AdjMatrix(valveKeys, valveTunnels)
-    apsp := AllPairsShortestPaths(matrix)
+
     graph := &Graph{
         Keys: valveKeys,
         AdjMatrix: matrix,
         Rates: valveRates,
-        Apsp: apsp,
     }
+    graph.CollapseAllNodesWithZeroRate()
+    apsp := AllPairsShortestPaths(graph.AdjMatrix)
+    graph.SetAPSP(apsp)
     return graph
 }
 
@@ -223,25 +272,14 @@ func Part_one(input_file string) int {
     return recurseGraphWalk(G, pos(G.Keys, "AA"))
 }
 
-// func Part_two(input_file string) int {
-//     file, err := os.Open(input_file)
-//     if err != nil {
-//         log.Fatal(err)
-//     }
-//     defer file.Close()
-//
-//     scanner := bufio.NewScanner(file)
-//     // Read input line by line
-//     for scanner.Scan() {
-//         line := scanner.Text()
-//         // code here
-//     }
-//     return 0
-// }
+func Part_two(input_file string) int {
+    G := parseInput(input_file)
+    return 0
+}
 
 func main() {
     input := os.Args[1]
-    fmt.Println(Part_one(input))
-    //fmt.Println(Part_two(input))
+    //fmt.Println(Part_one(input))
+    fmt.Println(Part_two(input))
 
 }
